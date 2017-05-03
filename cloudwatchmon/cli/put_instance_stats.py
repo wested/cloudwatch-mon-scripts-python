@@ -128,7 +128,7 @@ class Passenger:
         results = {}
 
         status_out = [s.split() for s in
-                  os.popen('passenger-status').read().splitlines()]
+                  os.popen('/usr/sbin/passenger-status').read().splitlines()]
         disks = []
         for line in status_out[0:]:
             if len(line) > 0 and line[0] == 'Processes':
