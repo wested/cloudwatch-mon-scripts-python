@@ -118,6 +118,22 @@ class LoadAverage:
 
         return loadavg_info
 
+class Passenger:
+    def __init__(self):
+        passenger_info = self.__gather_passenger_info()
+        self.process_count = passenger_info['Processes']
+
+    @staticmethod
+    def __gather_passenger_info():
+        results = {}
+
+        status_out = [s.split() for s in
+                  os.popen('passenger-status').read().splitlines()]
+        disks = []
+        for line in status_out[0:]:
+            if len(line) > 0 and line[0] == 'Processes':
+                results['Processes'] = line[2]
+        return results
 
 class Disk:
     def __init__(self, mount, file_system, total, used, avail, inode_util):
@@ -282,6 +298,11 @@ https://github.com/osiegmar/cloudwatch-mon-scripts-python
                                action='store_true',
                                help='Report load averages for 1min, 5min and 15min divided by the number of CPU cores.')
 
+    passenger_group = parser.add_argument_group('passenger stats')
+    passenger_group.add_argument('--passenger_count',
+                                action='store_true',
+                                help='Report Passenger count')
+
     disk_group = parser.add_argument_group('disk metrics')
     disk_group.add_argument('--disk-path',
                             metavar='PATH',
@@ -372,6 +393,11 @@ def add_loadavg_metrics(args, metrics):
         metrics.add_metric('LoadAvgPerCPU1Min', None, loadavg.loadavg_percpu_1min)
         metrics.add_metric('LoadAvgPerCPU5Min', None, loadavg.loadavg_percpu_5min)
         metrics.add_metric('LoadAvgPerCPU15Min', None, loadavg.loadavg_percpu_15min)
+
+def add_passenger_metrics(args, metrics):
+    passenger_info = Passenger()
+    if args.passenger_count:
+        metrics.add_metric('PassengerProcessCount', None, passenger_info.process_count)
 
 
 def get_disk_info(args):
@@ -477,6 +503,7 @@ def validate_args(args):
         args.swap_util or args.swap_used
     report_disk_data = args.disk_path is not None
     report_loadavg_data = args.loadavg or args.loadavg_percpu
+    report_passenger_data = args.passenger_count
     report_process_data = args.process_name is not None
 
     if report_disk_data:
@@ -495,11 +522,11 @@ def validate_args(args):
                          'disk path is not specified.')
 
     if not report_mem_data and not report_disk_data and \
-            not args.from_file and not report_loadavg_data:
+            not args.from_file and not report_loadavg_data and not report_passenger_data:
         raise ValueError('No metrics specified for collection and '
                          'submission to CloudWatch.')
 
-    return report_disk_data, report_mem_data, report_loadavg_data, report_process_data
+    return report_disk_data, report_mem_data, report_loadavg_data, report_process_data, report_passenger_data
 
 
 def main():
@@ -517,7 +544,7 @@ def main():
         return 0
 
     try:
-        report_disk_data, report_mem_data, report_loadavg_data, report_process_data = \
+        report_disk_data, report_mem_data, report_loadavg_data, report_process_data, report_passenger_data = \
             validate_args(args)
 
         # avoid a storm of calls at the beginning of a minute
@@ -559,6 +586,9 @@ def main():
 
         if report_loadavg_data:
             add_loadavg_metrics(args, metrics)
+
+        if report_passenger_data:
+            add_passenger_metrics(args, metrics)
 
         if report_disk_data:
             add_disk_metrics(args, metrics)
